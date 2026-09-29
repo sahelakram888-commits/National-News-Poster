@@ -1,10 +1,30 @@
-name: National Reporter - Auto Poster (Every 2 Hours)
+name: National Reporter - Auto Poster (Routine + Breaking)
 
 on:
   schedule:
-    # Every 2 hours - 0 */2 * * *
+    # Routine every 2 hours
     - cron: '0 */2 * * *'
-  workflow_dispatch:  # Allow manual run
+    # Breaking news check every 15 minutes
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      force_post:
+        description: 'Force post even if duplicate'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      mode:
+        description: 'Run mode'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - routine
+          - breaking
   push:
     branches: [ main ]
 
@@ -35,16 +55,97 @@ jobs:
         OPENAI_MODEL=gpt-4o-mini
         EOL
         chmod 600 .env
-        echo "Env created with Page ID: ${{ secrets.FACEBOOK_PAGE_ID }}"
 
-    - name: Run National Reporter Agent (Once)
+    - name: Determine run mode
+      id: mode
       run: |
-        python src/main.py --once
+        # Check if this is a scheduled run and what time it is
+        HOUR=$(date +%H)
+        MINUTE=$(date +%M)
+        # If minute is 0 and hour divisible by 2, it's routine time
+        # Otherwise it's breaking check
+        if [ "${{ github.event_name }}" = "schedule" ]; then
+          CRON="${{ github.event.schedule }}"
+          if [ "$CRON" = "0 */2 * * *" ]; then
+            echo "mode=routine" >> $GITHUB_OUTPUT
+            echo "is_routine=true" >> $GITHUB_OUTPUT
+          else
+            echo "mode=breaking" >> $GITHUB_OUTPUT
+            echo "is_routine=false" >> $GITHUB_OUTPUT
+          fi
+        else
+          # Manual or push - use input or default to routine
+          INPUT_MODE="${{ github.event.inputs.mode }}"
+          if [ "$INPUT_MODE" = "breaking" ]; then
+            echo "mode=breaking" >> $GITHUB_OUTPUT
+            echo "is_routine=false" >> $GITHUB_OUTPUT
+          elif [ "$INPUT_MODE" = "routine" ]; then
+            echo "mode=routine" >> $GITHUB_OUTPUT
+            echo "is_routine=true" >> $GITHUB_OUTPUT
+          else
+            # Auto - decide based on time
+            if [ $((10#$MINUTE)) -lt 15 ] && [ $((10#$HOUR % 2)) -eq 0 ]; then
+              echo "mode=routine" >> $GITHUB_OUTPUT
+              echo "is_routine=true" >> $GITHUB_OUTPUT
+            else
+              echo "mode=breaking" >> $GITHUB_OUTPUT
+              echo "is_routine=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+        fi
+        echo "Current time: $(date) | Hour: $HOUR | Minute: $MINUTE"
 
-    - name: Upload generated images as artifacts
+    - name: Run Breaking News Check (Every 15 min)
+      if: steps.mode.outputs.is_routine == 'false'
+      run: |
+        echo "Running BREAKING NEWS check (every 15 min) - posts immediately if breaking detected"
+        python src/main.py --breaking-check ${{ github.event.inputs.force_post == 'true' && '--force' || '' }}
+
+    - name: Run Routine Poster (Every 2 hours)
+      if: steps.mode.outputs.is_routine == 'true'
+      run: |
+        echo "Running ROUTINE poster (every 2 hours) - Politics + All categories morning"
+        python src/main.py --once ${{ github.event.inputs.force_post == 'true' && '--force' || '' }}
+
+    - name: Upload generated images
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: news-cards-${{ github.run_number }}
+        name: news-cards-${{ steps.mode.outputs.mode }}-${{ github.run_number }}
         path: output/
         retention-days: 7
+
+  # Optional: Second job for more aggressive breaking news (every 5 min for very important)
+  breaking-fast:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' && contains(github.event.schedule, '*/15')
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Install deps
+      run: pip install -r requirements.txt
+    - name: Create env
+      run: |
+        cat > .env << EOL
+        FACEBOOK_PAGE_ID=${{ secrets.FACEBOOK_PAGE_ID }}
+        FACEBOOK_PAGE_ACCESS_TOKEN=${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
+        OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+        EOL
+    - name: Fast breaking check (only if important keywords)
+      run: |
+        # Quick scrape and check for very high importance breaking news
+        python -c "
+        from src.scraper import aggregate_news
+        from src.breaking_detector import detect_breaking_news
+        data = aggregate_news()
+        result = detect_breaking_news(data)
+        if result['is_breaking']:
+            print(f'BREAKING detected in fast check: {result[\"breaking_stories\"]}')
+            # The main job will handle posting
+        else:
+            print('No breaking news in fast check')
+        "
