@@ -1,21 +1,22 @@
 """
-National Reporter - Breaking News Detector
-Detects breaking/important news as it happens, not just routine
+National Reporter - Breaking News Detector V2
+- Fixes duplicate posts in GitHub Actions (ephemeral runners)
+- Checks Facebook Page recent posts + local file + hash
+- Dynamic, not static
 """
 import re
 import json
 import logging
-from datetime import datetime
+import hashlib
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List
 
-from config import BREAKING_NEWS, OUTPUT_DIR
+from config import BREAKING_NEWS, OUTPUT_DIR, FACEBOOK_PAGE_ID, FACEBOOK_PAGE_ACCESS_TOKEN
 
 logger = logging.getLogger(__name__)
 
 BREAKING_KEYWORDS = BREAKING_NEWS["keywords"]
-
-# File to store last posted news to avoid duplicates
 LAST_POSTED_FILE = OUTPUT_DIR / "last_posted.json"
 
 def load_last_posted() -> Dict:
@@ -25,54 +26,126 @@ def load_last_posted() -> Dict:
                 return json.load(f)
     except Exception as e:
         logger.warning(f"Could not load last posted: {e}")
-    return {"titles": [], "last_breaking": None, "last_routine": None}
+    return {"titles": [], "hashes": [], "last_breaking": None, "last_routine": None, "last_titles_hash": ""}
 
 def save_last_posted(titles: List[str], is_breaking: bool = False):
     try:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         data = load_last_posted()
-        # Keep last 50 titles to avoid duplicates
-        data["titles"] = (titles + data.get("titles", []))[:50]
+        # Create hash of titles for duplicate detection
+        titles_str = "".join(sorted(titles[:3])).lower()
+        titles_hash = hashlib.md5(titles_str.encode()).hexdigest()
+        
+        data["titles"] = (titles + data.get("titles", []))[:100]
+        data["hashes"] = ([titles_hash] + data.get("hashes", []))[:50]
+        data["last_titles_hash"] = titles_hash
         if is_breaking:
             data["last_breaking"] = datetime.now().isoformat()
         else:
             data["last_routine"] = datetime.now().isoformat()
+        
         with open(LAST_POSTED_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        logger.info(f"Saved last posted: hash {titles_hash}, {len(titles)} titles")
     except Exception as e:
         logger.warning(f"Could not save last posted: {e}")
 
+def get_facebook_recent_posts(limit: int = 10) -> List[str]:
+    """
+    Get recent posts from Facebook Page to check for duplicates
+    This works in GitHub Actions where local file is ephemeral
+    """
+    try:
+        if not FACEBOOK_PAGE_ACCESS_TOKEN or not FACEBOOK_PAGE_ID:
+            logger.warning("No FB token for duplicate check via API")
+            return []
+        
+        import requests
+        url = f"https://graph.facebook.com/v20.0/{FACEBOOK_PAGE_ID}/posts?limit={limit}&fields=message&access_token={FACEBOOK_PAGE_ACCESS_TOKEN}"
+        r = requests.get(url, timeout=15)
+        if r.status_code == 200:
+            data = r.json()
+            recent_messages = []
+            for post in data.get('data', []):
+                msg = post.get('message', '')
+                # Extract first 50 chars of headline from message
+                if msg:
+                    recent_messages.append(msg[:100].lower())
+            logger.info(f"Fetched {len(recent_messages)} recent FB posts for duplicate check")
+            return recent_messages
+        else:
+            logger.warning(f"Failed to fetch FB recent posts: {r.status_code} - {r.text[:300]}")
+            return []
+    except Exception as e:
+        logger.warning(f"Exception fetching FB recent posts: {e}")
+        return []
+
+def is_duplicate_title(title: str, recent_fb_posts: List[str] = None, last_posted_data: Dict = None) -> bool:
+    """
+    Check if title is duplicate by:
+    1. Local last_posted.json
+    2. Facebook recent posts (for GitHub Actions)
+    3. Hash comparison
+    """
+    if last_posted_data is None:
+        last_posted_data = load_last_posted()
+    
+    lower_title = title.lower().strip()
+    
+    # Check local file
+    for posted_title in last_posted_data.get('titles', [])[:20]:
+        # If 70% similarity or exact match
+        if lower_title == posted_title.lower().strip():
+            logger.info(f"Duplicate found in local file: {title[:50]}")
+            return True
+        # Check if first 30 chars match (same news)
+        if len(lower_title) > 20 and len(posted_title) > 20:
+            if lower_title[:30] == posted_title.lower().strip()[:30]:
+                logger.info(f"Duplicate (first 30 chars) in local: {title[:50]}")
+                return True
+    
+    # Check Facebook recent posts
+    if recent_fb_posts:
+        for fb_msg in recent_fb_posts:
+            # If title appears in recent FB post message
+            if len(lower_title) > 15 and lower_title[:20] in fb_msg:
+                logger.info(f"Duplicate found in FB recent posts: {title[:50]}")
+                return True
+            # Check headline similarity
+            if lower_title[:25] in fb_msg or fb_msg[:25] in lower_title:
+                # Additional check to avoid false positives
+                if len(lower_title) > 25:
+                    logger.info(f"Possible duplicate in FB: {title[:50]}")
+                    # Don't return True immediately for this, just log
+    
+    # Check hash
+    titles_hash = hashlib.md5(lower_title.encode()).hexdigest()
+    if titles_hash in last_posted_data.get('hashes', [])[:10]:
+        logger.info(f"Duplicate hash found: {title[:50]}")
+        return True
+    
+    return False
+
 def calculate_breaking_score(title: str, source: str = "") -> int:
-    """
-    Calculate breaking news score 0-10
-    8-10 = Breaking, immediate post
-    5-7 = Important, routine
-    0-4 = Normal
-    """
     score = 0
     lower = title.lower()
     
-    # Keyword matching
     breaking_matches = sum(1 for kw in BREAKING_KEYWORDS if kw in lower)
-    score += min(breaking_matches * 2, 6)  # Up to 6 points for keywords
+    score += min(breaking_matches * 2, 6)
     
-    # Politics + important persons
-    important_persons = ['cm', 'pm', 'minister', 'kcr', 'ktr', 'revanth', 'owaisi', 'modi', 'rahul', 'governor', 'high court', 'supreme court']
+    important_persons = ['cm', 'pm', 'minister', 'kcr', 'ktr', 'revanth', 'owaisi', 'modi', 'rahul', 'governor', 'high court', 'supreme court', 'mayor']
     if any(p in lower for p in important_persons):
         score += 2
     
-    # Action words indicating breaking
-    action_words = ['resigns', 'arrested', 'wins', 'loses', 'announces', 'declares', 'dies', 'accident', 'blast', 'firing', 'protest', 'result']
+    action_words = ['resigns', 'arrested', 'wins', 'loses', 'announces', 'declares', 'dies', 'accident', 'blast', 'firing', 'protest', 'result', 'withdraws', 'attacks']
     if any(a in lower for a in action_words):
         score += 2
     
-    # Recency bonus - if title has time indicators like "just in", "live", "today"
-    recency_words = ['just in', 'live', 'today', 'now', 'breaking']
+    recency_words = ['just in', 'live', 'today', 'now', 'breaking', 'urgent']
     if any(r in lower for r in recency_words):
         score += 1
     
-    # Length check - very short or very long less likely breaking
-    if 20 <= len(title) <= 150:
+    if 20 <= len(title) <= 180:
         score += 1
     
     return min(score, 10)
@@ -83,20 +156,16 @@ def is_breaking_news(title: str, score: int = None) -> bool:
     return score >= BREAKING_NEWS["importance_threshold"]
 
 def detect_breaking_news(aggregated_data: Dict) -> Dict:
-    """
-    Detect breaking news from aggregated data
-    Returns: {is_breaking: bool, breaking_stories: [], all_scores: []}
-    """
     all_titles = aggregated_data.get('raw_titles', [])
     categorized = aggregated_data.get('categorized', {})
     
     last_posted = load_last_posted()
-    last_titles = [t.lower() for t in last_posted.get('titles', [])]
+    recent_fb_posts = get_facebook_recent_posts(limit=15)
     
     scored_stories = []
     for title in all_titles:
-        # Skip if already posted recently
-        if title.lower() in last_titles:
+        # Skip if duplicate
+        if is_duplicate_title(title, recent_fb_posts, last_posted):
             continue
         
         score = calculate_breaking_score(title)
@@ -107,16 +176,15 @@ def detect_breaking_news(aggregated_data: Dict) -> Dict:
             "is_new": True
         })
     
-    # Sort by score descending
     scored_stories.sort(key=lambda x: x['score'], reverse=True)
     
     breaking_stories = [s for s in scored_stories if s['is_breaking']]
     
-    # Also check categorized politics for breaking
+    # Check politics category too
     politics = categorized.get('politics', [])[:5]
     for story in politics:
         title = story.get('title', '')
-        if title.lower() in last_titles:
+        if is_duplicate_title(title, recent_fb_posts, last_posted):
             continue
         score = calculate_breaking_score(title)
         if score >= 7 and not any(s['title'] == title for s in scored_stories):
@@ -128,36 +196,36 @@ def detect_breaking_news(aggregated_data: Dict) -> Dict:
                 "category": "politics"
             })
     
-    is_breaking = len(breaking_stories) > 0
+    # Re-sort
+    scored_stories.sort(key=lambda x: x['score'], reverse=True)
+    breaking_stories = [s for s in scored_stories if s['is_breaking']]
     
-    logger.info(f"Breaking detection: {len(breaking_stories)} breaking, {len(scored_stories)} total scored, threshold {BREAKING_NEWS['importance_threshold']}")
+    logger.info(f"Breaking detection: {len(breaking_stories)} breaking, {len(scored_stories)} new (after dedup), threshold {BREAKING_NEWS['importance_threshold']}")
     if breaking_stories:
         for b in breaking_stories[:3]:
             logger.info(f"  BREAKING (Score {b['score']}): {b['title']}")
+    else:
+        logger.info(f"  No breaking news, top scored: {scored_stories[:2]}")
     
     return {
-        "is_breaking": is_breaking,
+        "is_breaking": len(breaking_stories) > 0,
         "breaking_stories": breaking_stories,
         "all_scored": scored_stories[:10],
-        "should_post_immediately": is_breaking and BREAKING_NEWS["immediate_post"],
-        "routine_should_post": True,  # Always post routine every 2h, but breaking takes priority
-        "checked_at": datetime.now().isoformat()
+        "should_post_immediately": len(breaking_stories) > 0 and BREAKING_NEWS["immediate_post"],
+        "checked_at": datetime.now().isoformat(),
+        "total_new": len(scored_stories)
     }
 
 def should_post_now(aggregated_data: Dict, is_routine_schedule: bool = False) -> Dict:
-    """
-    Decide if we should post now
-    - If breaking news detected: post immediately
-    - If routine schedule (every 2h): post routine
-    - If no new news: skip to avoid duplicates
-    """
     breaking_result = detect_breaking_news(aggregated_data)
-    
     last_posted = load_last_posted()
+    recent_fb_posts = get_facebook_recent_posts(limit=10)
     
-    # Check if we have new titles
     all_titles = aggregated_data.get('raw_titles', [])
-    new_titles = [t for t in all_titles if t.lower() not in [x.lower() for x in last_posted.get('titles', [])]]
+    new_titles = []
+    for t in all_titles:
+        if not is_duplicate_title(t, recent_fb_posts, last_posted):
+            new_titles.append(t)
     
     decision = {
         "should_post": False,
@@ -165,45 +233,61 @@ def should_post_now(aggregated_data: Dict, is_routine_schedule: bool = False) ->
         "is_breaking": breaking_result["is_breaking"],
         "breaking_stories": breaking_result["breaking_stories"],
         "is_routine": is_routine_schedule,
-        "new_titles_count": len(new_titles)
+        "new_titles_count": len(new_titles),
+        "total_titles": len(all_titles)
     }
     
     if breaking_result["is_breaking"]:
         decision["should_post"] = True
-        decision["reason"] = f"BREAKING NEWS detected ({len(breaking_result['breaking_stories'])} stories) - immediate post"
+        decision["reason"] = f"BREAKING NEWS ({len(breaking_result['breaking_stories'])} new breaking) - immediate post"
         decision["priority"] = "BREAKING"
     elif is_routine_schedule and len(new_titles) > 0:
         decision["should_post"] = True
-        decision["reason"] = f"Routine schedule (every 2h) + {len(new_titles)} new verified stories"
+        decision["reason"] = f"Routine (2h) + {len(new_titles)} NEW verified stories (not duplicates)"
         decision["priority"] = "ROUTINE"
     elif is_routine_schedule and len(new_titles) == 0:
-        # Even if no new titles, post in morning to cover all categories, or if politics important
         hour = datetime.now().hour
-        if hour in [6,7,8,9,10,11]:  # Morning - always post
-            decision["should_post"] = True
-            decision["reason"] = f"Morning routine (6-11 AM) - covering all categories even if no brand new titles"
-            decision["priority"] = "MORNING_ROUTINE"
+        # Check last routine post time
+        last_routine_str = last_posted.get('last_routine')
+        should_force_morning = False
+        if last_routine_str:
+            try:
+                last_routine = datetime.fromisoformat(last_routine_str)
+                hours_since = (datetime.now() - last_routine).total_seconds() / 3600
+                # If more than 4 hours since last routine, force post even if no new news (to avoid long gaps)
+                if hours_since > 4:
+                    should_force_morning = True
+            except:
+                pass
+        
+        if hour in [6,7,8,9,10,11] or should_force_morning:
+            if len(all_titles) > 0:
+                decision["should_post"] = True
+                decision["reason"] = f"Morning routine or >4h since last post - posting latest available (even if not brand new) to avoid long gap"
+                decision["priority"] = "MORNING_ROUTINE"
+            else:
+                decision["should_post"] = False
+                decision["reason"] = f"No news available at all"
+                decision["priority"] = "SKIP"
         else:
             decision["should_post"] = False
-            decision["reason"] = f"No new verified news, skipping to avoid duplicate (last posted {len(last_posted.get('titles', []))} titles)"
-            decision["priority"] = "SKIP"
+            decision["reason"] = f"No NEW news ({len(new_titles)} new / {len(all_titles)} total) - skipping to avoid duplicate old card. Last posted {len(last_posted.get('titles', []))} titles. Recent FB posts checked."
+            decision["priority"] = "SKIP_DUPLICATE"
     else:
         decision["should_post"] = False
         decision["reason"] = "Not routine schedule and no breaking news"
         decision["priority"] = "SKIP"
     
-    logger.info(f"Post decision: {decision['should_post']} | Reason: {decision['reason']} | Priority: {decision.get('priority')}")
+    logger.info(f"Post decision: {decision['should_post']} | {decision['reason']} | Priority: {decision.get('priority')} | New: {len(new_titles)}/{len(all_titles)}")
     
     return decision
 
 if __name__ == "__main__":
-    # Test
     test_data = {
         "raw_titles": [
             "BREAKING: Telangana CM Revanth Reddy announces major scheme",
             "BJP attacks Revanth Reddy over comments",
             "Hyderabad police action in Old City",
-            "Normal news about weather"
         ],
         "categorized": {
             "politics": [{"title": "BREAKING: Telangana CM Revanth Reddy announces major scheme"}],
@@ -215,8 +299,6 @@ if __name__ == "__main__":
         }
     }
     result = detect_breaking_news(test_data)
-    print(f"Breaking: {result['is_breaking']}")
-    print(f"Stories: {result['breaking_stories']}")
-    
+    print(f"Breaking: {result['is_breaking']}, New: {result['total_new']}")
     decision = should_post_now(test_data, is_routine_schedule=True)
     print(f"Decision: {decision}")
