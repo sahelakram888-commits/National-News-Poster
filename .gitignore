@@ -18,3 +18,5 @@ agent.log
 
 # OS
 Thumbs.db
+.env
+output/
