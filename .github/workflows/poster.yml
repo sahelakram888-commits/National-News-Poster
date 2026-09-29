@@ -1,0 +1,50 @@
+name: National Reporter - Auto Poster (Every 2 Hours)
+
+on:
+  schedule:
+    # Every 2 hours - 0 */2 * * *
+    - cron: '0 */2 * * *'
+  workflow_dispatch:  # Allow manual run
+  push:
+    branches: [ main ]
+
+jobs:
+  post-news:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Create .env from secrets
+      run: |
+        cat > .env << EOL
+        FACEBOOK_PAGE_ID=${{ secrets.FACEBOOK_PAGE_ID }}
+        FACEBOOK_PAGE_ACCESS_TOKEN=${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
+        OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+        OPENAI_MODEL=gpt-4o-mini
+        EOL
+        chmod 600 .env
+        echo "Env created with Page ID: ${{ secrets.FACEBOOK_PAGE_ID }}"
+
+    - name: Run National Reporter Agent (Once)
+      run: |
+        python src/main.py --once
+
+    - name: Upload generated images as artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: news-cards-${{ github.run_number }}
+        path: output/
+        retention-days: 7

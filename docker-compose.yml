@@ -1,0 +1,13 @@
+version: '3.8'
+services:
+  national-reporter:
+    build: .
+    container_name: national-reporter-agent
+    volumes:
+      - ./output:/app/output
+      - ./.env:/app/.env
+    env_file:
+      - .env
+    restart: unless-stopped
+    # For scheduler mode
+    command: python src/main.py --schedule

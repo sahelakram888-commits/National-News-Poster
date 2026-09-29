@@ -1,0 +1,20 @@
+# Secrets - NEVER push
+.env
+*.env
+output/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+*.log
+agent.log
+
+# Keep example
+!.env.example
+
+# Fonts are ok to push (optional, but large)
+# assets/fonts/ - keep
+
+# OS
+Thumbs.db

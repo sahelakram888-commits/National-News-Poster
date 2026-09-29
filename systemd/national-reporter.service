@@ -1,0 +1,15 @@
+[Unit]
+Description=National Reporter AI Agent - Every 2 Hours
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/national-reporter-agent
+EnvironmentFile=/home/ubuntu/national-reporter-agent/.env
+ExecStart=/home/ubuntu/national-reporter-agent/.venv/bin/python src/main.py --schedule
+Restart=always
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target

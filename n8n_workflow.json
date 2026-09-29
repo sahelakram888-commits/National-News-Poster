@@ -1,0 +1,344 @@
+{
+  "name": "National Reporter - Auto News Poster (Every 2 Hours)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "minutesInterval": 0,
+              "triggerAtHour": 0
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger - Every 2 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [460, 300],
+      "notes": "Runs every 2 hours as required"
+    },
+    {
+      "parameters": {
+        "url": "https://munsifdaily.com/",
+        "sendQuery": false,
+        "options": {}
+      },
+      "id": "fetch-munsif",
+      "name": "HTTP Request - Munsif Daily",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 200],
+      "notes": "Fetch latest from Munsif"
+    },
+    {
+      "parameters": {
+        "url": "https://www.en.etemaaddaily.com/",
+        "sendQuery": false,
+        "options": {}
+      },
+      "id": "fetch-etemaad",
+      "name": "HTTP Request - Etemaad Daily",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 400],
+      "notes": "Fetch latest from Etemaad"
+    },
+    {
+      "parameters": {
+        "url": "https://munsifdaily.com/category/hyderabad-news/",
+        "options": {}
+      },
+      "id": "fetch-hyderabad",
+      "name": "HTTP Request - Hyderabad News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://munsifdaily.com/category/telangana-news/",
+        "options": {}
+      },
+      "id": "fetch-telangana",
+      "name": "HTTP Request - Telangana",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "mergeByFields": {
+          "values": []
+        },
+        "options": {}
+      },
+      "id": "merge-news",
+      "name": "Merge - Aggregate All News",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Clean and aggregate - NO LINKS constraint\nconst allHtml = $input.all.map(i => i.json).join(' ');\n// Extract headlines via regex (simplified)\nconst titleRegex = /<h[2-4][^>]*>(.*?)<\\/h[2-4]>/gi;\nlet titles = [];\nlet match;\nwhile ((match = titleRegex.exec(allHtml)) !== null) {\n  let t = match[1].replace(/<[^>]*>/g, '').trim();\n  t = t.replace(/http\\S+|www\\S+/g, ''); // NO LINKS\n  if (t.length > 15 && t.length < 250) titles.push(t);\n}\n// Deduplicate\ntitles = [...new Set(titles)].slice(0,20);\nreturn [{ json: { titles, fetched_at: new Date().toISOString(), count: titles.length } }];"
+      },
+      "id": "clean-aggregate",
+      "name": "Code - Clean & Deduplicate (NO LINKS)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "complete",
+        "model": "gpt-4o-mini",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an expert Urdu news editor for 'National Reporter' - premium black & gold brand. From provided news titles, select TOP 1-2 most important breaking news (prefer Hyderabad, Telangana, then India). Summarize into JSON: {\"headline\": \"Brief impactful headline in Urdu (max 12 words)\", \"headline_roman\": \"Same in Roman Urdu\", \"urdu_bullets\": [\"3-5 bullets pure Urdu script\"], \"roman_urdu_bullets\": [\"Exact same in Roman Urdu (Urdu in English letters)\"], \"category\": \"Hyderabad/Telangana/India/World\"}. STRICT: NO hyperlinks, NO URLs. Urdu bullets pure Urdu script, Roman Urdu is Urdu written in English alphabets (e.g., 'Hyderabad mein...'). Professional, concise."
+            },
+            {
+              "role": "user",
+              "content": "=Summarize these news titles into Urdu + Roman Urdu format (NO LINKS):\n\n{{$json[\"titles\"].join('\\n')}}\n\nOutput JSON only."
+            }
+          ]
+        },
+        "simplify": false,
+        "responseFormat": "json_object"
+      },
+      "id": "openai-process",
+      "name": "OpenAI - GPT-4 Summarize Urdu + Roman",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.3,
+      "position": [1560, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-api-key",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate NO LINKS and format\nconst data = $input.first().json.message?.content ? JSON.parse($input.first().json.message.content) : $input.first().json;\nfunction cleanNoLinks(t){ return t.replace(/http\\S+|www\\S+/g, '').replace(/\\[.*?\\]\\(.*?\\)/g, '').trim(); }\nlet result = {\n  headline: cleanNoLinks(data.headline || 'اہم خبر'),\n  headline_roman: cleanNoLinks(data.headline_roman || data.headline),\n  urdu_bullets: (data.urdu_bullets||[]).map(cleanNoLinks).slice(0,5),\n  roman_urdu_bullets: (data.roman_urdu_bullets||[]).map(cleanNoLinks).slice(0,5),\n  category: data.category || 'Hyderabad',\n  date_str: new Date().toLocaleDateString('en-IN', {day:'numeric', month:'long', year:'numeric'}),\n  time_str: new Date().toLocaleTimeString('en-IN', {hour:'numeric', minute:'2-digit', hour12:true})\n};\nreturn [{json: result}];"
+      },
+      "id": "validate-format",
+      "name": "Code - Validate & Format (NO LINKS)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.bannerbear.com/v1/images",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "bannerbearApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "template",
+              "value": "YOUR_BANNERBEAR_TEMPLATE_ID_BLACK_GOLD"
+            },
+            {
+              "name": "modifications",
+              "value": "=[{ \"name\": \"headline\", \"text\": \"{{$json.headline}}\" }, { \"name\": \"headline_roman\", \"text\": \"{{$json.headline_roman}}\" }, { \"name\": \"urdu_bullets\", \"text\": \"{{$json.urdu_bullets.join('\\n• ')}}\" }, { \"name\": \"roman_bullets\", \"text\": \"{{$json.roman_urdu_bullets.join('\\n• ')}}\" }, { \"name\": \"date_time\", \"text\": \"{{$json.date_str}} | {{$json.time_str}}\" }, { \"name\": \"category\", \"text\": \"{{$json.category}}\" }, { \"name\": \"logo\", \"image_url\": \"https://your-hosted-logo.png\" }]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bannerbear-image",
+      "name": "Bannerbear - Generate Black Gold Card",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 200],
+      "notes": "Alternative: Use APITemplate.io or self-hosted HTML to Image. Template must have black background, gold borders, NR logo top corner, Nastaliq font for Urdu, sans-serif for Roman"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Alternative to Bannerbear: Generate image locally via custom Python service or use HTML template\n// This node would call your hosted image generator service\n// For this blueprint, we assume image_url is returned from Bannerbear\nconst bannerbearResult = $input.first().json;\nreturn [{ json: { image_url: bannerbearResult.image_url || bannerbearResult.image_url_jpg || 'https://via.placeholder.placeholder', ...$input.first().json } }];"
+      },
+      "id": "prep-image-url",
+      "name": "Code - Prep Image URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 400]
+    },
+    {
+      "parameters": {
+        "resource": "photo",
+        "operation": "upload",
+        "pageId": "100085918100245",
+        "caption": "=📰 {{$('Code - Validate & Format (NO LINKS)').item.json.headline}}\n{{$('Code - Validate & Format (NO LINKS)').item.json.headline_roman}}\n\n━━━━━━━━━━━━━━━━━━━━\n📍 اردو میں اہم نکات:\n• {{$('Code - Validate & Format (NO LINKS)').item.json.urdu_bullets.join('\\n• ')}}\n\n━━━━━━━━━━━━━━━━━━━━\n📍 Roman Urdu Summary:\n• {{$('Code - Validate & Format (NO LINKS)').item.json.roman_urdu_bullets.join('\\n• ')}}\n\n━━━━━━━━━━━━━━━━━━━━\n🏷️ Category: {{$('Code - Validate & Format (NO LINKS)').item.json.category}}\n🕒 {{$('Code - Validate & Format (NO LINKS)').item.json.date_str}} | {{$('Code - Validate & Format (NO LINKS)').item.json.time_str}}\n\n#NationalReporter #NR #Hyderabad #Telangana #UrduNews #BreakingNews",
+        "binaryProperty": "data",
+        "additionalFields": {}
+      },
+      "id": "facebook-publish",
+      "name": "Facebook Graph API - Post to National Reporter Page",
+      "type": "n8n-nodes-base.facebookGraphApi",
+      "typeVersion": 2,
+      "position": [2220, 300],
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "facebook-page-token",
+          "name": "National Reporter Facebook Page"
+        }
+      },
+      "notes": "Posts image + Urdu + Roman Urdu text directly to https://www.facebook.com/profile.php?id=100085918100245. NO LINKS in caption."
+    }
+  ],
+  "connections": {
+    "Schedule Trigger - Every 2 Hours": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Munsif Daily",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request - Etemaad Daily",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request - Hyderabad News",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request - Telangana",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Munsif Daily": {
+      "main": [
+        [
+          {
+            "node": "Merge - Aggregate All News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Etemaad Daily": {
+      "main": [
+        [
+          {
+            "node": "Merge - Aggregate All News",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Hyderabad News": {
+      "main": [
+        [
+          {
+            "node": "Merge - Aggregate All News",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Telangana": {
+      "main": [
+        [
+          {
+            "node": "Merge - Aggregate All News",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Merge - Aggregate All News": {
+      "main": [
+        [
+          {
+            "node": "Code - Clean & Deduplicate (NO LINKS)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Clean & Deduplicate (NO LINKS)": {
+      "main": [
+        [
+          {
+            "node": "OpenAI - GPT-4 Summarize Urdu + Roman",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - GPT-4 Summarize Urdu + Roman": {
+      "main": [
+        [
+          {
+            "node": "Code - Validate & Format (NO LINKS)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validate & Format (NO LINKS)": {
+      "main": [
+        [
+          {
+            "node": "Bannerbear - Generate Black Gold Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bannerbear - Generate Black Gold Card": {
+      "main": [
+        [
+          {
+            "node": "Code - Prep Image URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Prep Image URL": {
+      "main": [
+        [
+          {
+            "node": "Facebook Graph API - Post to National Reporter Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "meta": {
+    "instanceId": "national-reporter-agent",
+    "brand": "National Reporter - Premium Black & Gold",
+    "constraints": "NO LINKS",
+    "schedule": "Every 2 hours",
+    "sources": ["Munsif Daily", "Etemaad Daily", "Hyderabad", "Telangana", "India", "World", "Regional"],
+    "output": "Urdu bullets (Nastaliq) + Roman Urdu bullets (sans-serif) + 1080x1080 card + Facebook Graph API"
+  }
+}

@@ -1,0 +1,19 @@
+# National Reporter - AI Agent Dependencies
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+Pillow>=10.0.0
+python-dotenv>=1.0.0
+openai>=1.30.0
+APScheduler>=3.10.0
+
+# For premium Urdu rendering (highly recommended)
+arabic-reshaper>=3.0.0
+python-bidi>=0.4.2
+
+# Optional - for HTML to image alternative (Bannerbear alternative)
+# playwright>=1.40.0
+# Use if you want to render the HTML template directly
+
+# For advanced scraping (optional)
+# feedparser>=6.0.0
