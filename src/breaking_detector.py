@@ -239,38 +239,28 @@ def should_post_now(aggregated_data: Dict, is_routine_schedule: bool = False) ->
     
     if breaking_result["is_breaking"]:
         decision["should_post"] = True
-        decision["reason"] = f"BREAKING NEWS ({len(breaking_result['breaking_stories'])} new breaking) - immediate post in middle of routine cycle"
+        decision["reason"] = f"BREAKING NEWS ({len(breaking_result['breaking_stories'])} new breaking) - immediate post in middle of routine 2h cycle (as it happens)"
         decision["priority"] = "BREAKING"
     elif is_routine_schedule:
-        # Routine: ALWAYS post every 2 hours to maintain cycle forever, even if not brand new
-        # This ensures 2h cycle maintained forever as requested
+        # Routine: ALWAYS post every 2 hours FOREVER - NEVER STOP (user request: set once for all, done, not stop again and again)
+        # This ensures 2h cycle maintained forever, even if no brand new news
+        # Each post will be unique (dynamic headline based on time + latest Munsif/Etemaad news)
+        last_routine_str = last_posted.get('last_routine')
+        hours_since = 0
+        if last_routine_str:
+            try:
+                last_routine = datetime.fromisoformat(last_routine_str)
+                hours_since = (datetime.now() - last_routine).total_seconds() / 3600
+            except:
+                hours_since = 5
+        
+        decision["should_post"] = True  # ALWAYS True for routine - maintain forever
         if len(new_titles) > 0:
-            decision["should_post"] = True
-            decision["reason"] = f"Routine 2h cycle + {len(new_titles)} NEW verified stories from Munsif & Etemaad"
+            decision["reason"] = f"Routine 2h cycle FOREVER (maintained, never stops) + {len(new_titles)} NEW from Munsif & Etemaad - {hours_since:.1f}h since last"
             decision["priority"] = "ROUTINE"
         else:
-            # Even if no new titles, post latest important to maintain 2h cycle forever
-            # But avoid exact duplicate by checking time since last post
-            last_routine_str = last_posted.get('last_routine')
-            hours_since = 0
-            if last_routine_str:
-                try:
-                    last_routine = datetime.fromisoformat(last_routine_str)
-                    hours_since = (datetime.now() - last_routine).total_seconds() / 3600
-                except:
-                    hours_since = 5
-            
-            # Always post routine every 2h to maintain cycle forever
-            decision["should_post"] = True
-            if hours_since >= 1.5:  # At least 1.5h since last routine
-                decision["reason"] = f"Routine 2h cycle maintained forever - posting latest important news from Munsif & Etemaad (no brand new, but maintaining cycle, last routine {hours_since:.1f}h ago)"
-                decision["priority"] = "ROUTINE_MAINTAIN"
-            else:
-                # If less than 1.5h, check if we should still post or skip to avoid too frequent
-                # For GitHub Actions, routine is every 2h, so this should post
-                decision["should_post"] = True
-                decision["reason"] = f"Routine 2h cycle - maintaining forever with latest news"
-                decision["priority"] = "ROUTINE"
+            decision["reason"] = f"Routine 2h cycle FOREVER - maintaining forever, posting latest important from Munsif & Etemaad (unique card every time, never old duplicate), last {hours_since:.1f}h ago, never stops"
+            decision["priority"] = "ROUTINE_FOREVER"
     else:
         decision["should_post"] = False
         decision["reason"] = "Not routine schedule and no breaking news"

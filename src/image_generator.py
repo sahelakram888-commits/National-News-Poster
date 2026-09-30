@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-from config import BRAND, FONTS, IMAGE_SIZE, ASSETS_DIR, OUTPUT_DIR, FONT_SIZES
+from config import BRAND, FONTS, IMAGE_SIZE, ASSETS_DIR, OUTPUT_DIR, FONT_SIZES, CREDIT
 
 logger = logging.getLogger(__name__)
 
@@ -118,17 +118,23 @@ class NewsCardV3:
         draw = ImageDraw.Draw(img)
         draw_borders(draw, self.w, self.h)
 
-        # Logo - larger and more premium
+        # Logo - larger and more premium + Permanent Credit after small logo
         try:
             logo = process_logo()
-            logo.thumbnail((150,150), Image.LANCZOS)  # Larger logo
+            logo.thumbnail((150,150), Image.LANCZOS)
             lx, ly = 50, 50
             draw.rounded_rectangle([(lx-5, ly-5), (lx+logo.width+5, ly+logo.height+5)], radius=10, fill="#1A1A1A", outline=self.gold_dark, width=1)
             img.paste(logo, (lx, ly), logo)
             draw.text((lx, ly+logo.height+10), "NATIONAL REPORTER", font=self.font_small, fill=self.gold_light)
+            # Permanent Credit after small logo - Abu Aimak & Aimal Akram
+            if CREDIT["show_in_image"]:
+                credit_text = f"-- {CREDIT['name']}"
+                draw.text((lx, ly+logo.height+30), credit_text, font=self.font_small, fill="#FFD700")  # Gold credit
         except Exception as e:
             logger.warning(f"Logo failed: {e}")
             draw.text((50,50), "NR", font=self.font_poppins_bold, fill=self.gold)
+            if CREDIT["show_in_image"]:
+                draw.text((50,95), f"-- {CREDIT['name']}", font=self.font_small, fill="#FFD700")
 
         # Date/Time - larger, top right
         date_str = news_data.get('date_str', datetime.now().strftime("%d %B %Y"))
@@ -254,15 +260,25 @@ class NewsCardV3:
                 y += 32  # More spacing for larger font
             y += 10
 
-        # Footer
-        fy = self.h-60
+        # Footer - Permanent Credit at end
+        fy = self.h-65
         draw.rectangle([(0,fy),(self.w,self.h)], fill="#0F0F0F")
         draw.line([(0,fy),(self.w,fy)], fill=self.gold_dark, width=1)
-        footer = "© National Reporter | Verified News | Hyderabad, Telangana | Politics First"
+        # Main footer with credit at end - Abu Aimak & Aimal Akram
+        if CREDIT["show_in_footer"]:
+            footer = f"© National Reporter | Verified News | {CREDIT['name']} | Hyderabad"
+        else:
+            footer = "© National Reporter | Verified News | Hyderabad, Telangana | Politics First"
         bbox = draw.textbbox((0,0), footer, font=self.font_footer)
         fx = (self.w-(bbox[2]-bbox[0]))//2
-        draw.text((fx, fy+18), footer, font=self.font_footer, fill="#888888")
-        draw.text((50,fy+18), "NR", font=self.font_poppins_semi, fill=self.gold_dark)
+        draw.text((fx, fy+12), footer, font=self.font_footer, fill="#888888")
+        # Small NR + Credit
+        draw.text((50,fy+12), "NR", font=self.font_poppins_semi, fill=self.gold_dark)
+        # Extra credit line at bottom for permanence
+        credit_footer = f"-- {CREDIT['name']} | National Reporter Team"
+        bbox2 = draw.textbbox((0,0), credit_footer, font=self.font_footer)
+        fx2 = (self.w-(bbox2[2]-bbox2[0]))//2
+        draw.text((fx2, fy+32), credit_footer, font=self.font_footer, fill=self.gold_dark)
 
         img.save(output_path, "PNG", quality=95, optimize=True)
         logger.info(f"Generated (Large Fonts): {output_path}")

@@ -20,6 +20,7 @@ BRAND = {
     "name": "National Reporter",
     "short": "NR",
     "logo_path": str(ASSETS_DIR / "logo.png"),
+    "credit": "Abu Aimak & Aimal Akram",  # Permanent credit
     "theme": {
         "background": "#0A0A0A",
         "gold_primary": "#D4AF37",
@@ -31,8 +32,16 @@ BRAND = {
         "white": "#FFFFFF",
         "gray": "#E0E0E0",
         "card_bg": "#121212",
-        "red_breaking": "#FF0000",  # For breaking badge
+        "red_breaking": "#FF0000",
     }
+}
+
+# Permanent Credit - Set once for all
+CREDIT = {
+    "name": "Abu Aimak & Aimal Akram",
+    "show_in_image": True,  # After small logo
+    "show_in_footer": True,  # At end
+    "show_in_caption": True,  # At end of FB post
 }
 
 # Scraping Sources - Munsif & Etemaad ONLY for Urdu News
