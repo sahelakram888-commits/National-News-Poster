@@ -126,7 +126,7 @@ class NewsCardV3:
             draw.rounded_rectangle([(lx-5, ly-5), (lx+logo.width+5, ly+logo.height+5)], radius=10, fill="#1A1A1A", outline=self.gold_dark, width=1)
             img.paste(logo, (lx, ly), logo)
             draw.text((lx, ly+logo.height+10), "NATIONAL REPORTER", font=self.font_small, fill=self.gold_light)
-            # Permanent Credit after small logo - Abu Aimak & Aimal Akram
+            # Permanent Credit after small logo - Abu Aimal & Aimal Akram
             if CREDIT["show_in_image"]:
                 credit_text = f"-- {CREDIT['name']}"
                 draw.text((lx, ly+logo.height+30), credit_text, font=self.font_small, fill="#FFD700")  # Gold credit
@@ -264,7 +264,7 @@ class NewsCardV3:
         fy = self.h-65
         draw.rectangle([(0,fy),(self.w,self.h)], fill="#0F0F0F")
         draw.line([(0,fy),(self.w,fy)], fill=self.gold_dark, width=1)
-        # Main footer with credit at end - Abu Aimak & Aimal Akram
+        # Main footer with credit at end - Abu Aimal & Aimal Akram
         if CREDIT["show_in_footer"]:
             footer = f"© National Reporter | Verified News | {CREDIT['name']} | Hyderabad"
         else:

@@ -20,7 +20,7 @@ BRAND = {
     "name": "National Reporter",
     "short": "NR",
     "logo_path": str(ASSETS_DIR / "logo.png"),
-    "credit": "Abu Aimak & Aimal Akram",  # Permanent credit
+    "credit": "Abu Aimal & Aimal Akram",  # Permanent credit
     "theme": {
         "background": "#0A0A0A",
         "gold_primary": "#D4AF37",
@@ -38,7 +38,7 @@ BRAND = {
 
 # Permanent Credit - Set once for all
 CREDIT = {
-    "name": "Abu Aimak & Aimal Akram",
+    "name": "Abu Aimal & Aimal Akram",
     "show_in_image": True,  # After small logo
     "show_in_footer": True,  # At end
     "show_in_caption": True,  # At end of FB post

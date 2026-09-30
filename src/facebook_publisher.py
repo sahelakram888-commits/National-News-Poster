@@ -24,9 +24,9 @@ class FacebookPublisher:
     def get_credit_name(self) -> str:
         try:
             from config import CREDIT
-            return CREDIT.get('name', 'Abu Aimak & Aimal Akram')
+            return CREDIT.get('name', 'Abu Aimal & Aimal Akram')
         except:
-            return "Abu Aimak & Aimal Akram"
+            return "Abu Aimal & Aimal Akram"
 
     def is_configured(self) -> bool:
         return bool(self.page_id and self.access_token)
@@ -63,7 +63,7 @@ class FacebookPublisher:
         text += f"🏷️ Category: {category}\n"
         text += f"🕒 {date_str} | {time_str}\n"
         text += f"\n#NationalReporter #NR #Hyderabad #Telangana #UrduNews #BreakingNews"
-        # Permanent Credit at end - Abu Aimak & Aimal Akram
+        # Permanent Credit at end - Abu Aimal & Aimal Akram
         text += f"\n\n-- {self.get_credit_name()} | National Reporter Team"
         # Note: hashtags are okay, NOT hyperlinks
 
