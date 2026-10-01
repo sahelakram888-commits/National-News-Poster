@@ -1,11 +1,14 @@
 """
-Final Processor Wrapper V23 - Permanent fix Tabassum Begum 5x + Gemini + Reference card
+Final Processor Wrapper V24 FINAL - URDU + Reference Perfect Design
+User clarification: English card was FOR REFERENCE ONLY for design/layout
+Actual needed: URDU cards (Urdu script + Roman Urdu) with reference perfect design
+- Tabassum Begum 5x fix + TSA overuse + Fresh news + Reference perfect design
 """
 import logging
 logger = logging.getLogger(__name__)
 
 try:
-    from final_processor_v23 import (
+    from final_processor_v24 import (
         process_fresh_news,
         process_breaking_news,
         process_final_news,
@@ -17,11 +20,11 @@ try:
         translate_specific_news,
         calculate_importance
     )
-    logger.info("Using V23 FINAL - Tabassum 5x fix + Gemini + Reference card")
+    logger.info("Using V24 FINAL - URDU + Reference Perfect Design - User wants Urdu, English was reference only")
 except ImportError as e:
-    logger.warning(f"V23 import failed {e}, fallback to V22")
+    logger.warning(f"V24 import failed {e}, fallback to V23")
     try:
-        from final_processor_v22 import (
+        from final_processor_v23 import (
             process_fresh_news,
             process_breaking_news,
             process_final_news,
@@ -34,7 +37,7 @@ except ImportError as e:
             calculate_importance
         )
     except:
-        from final_processor_v21 import (
+        from final_processor_v22 import (
             process_fresh_news,
             process_breaking_news,
             process_final_news,
