@@ -73,9 +73,10 @@ def wrap_text(text, font, max_width, draw):
     return lines
 
 class NewsCardV4:
-    """V4 - Matches reference image exactly - English + Roman Urdu"""
+    """V4 - Matches reference image exactly - English + Roman Urdu - Dynamic height to reduce empty space"""
     def __init__(self):
-        self.w, self.h = 1080, 1350
+        self.w = 1080
+        self.h = 1350  # Max height, but will be dynamic based on content
         self.bg = "#0A0A0A"
         self.gold = "#D4AF37"
         self.gold_light = "#FFD700"
@@ -87,22 +88,85 @@ class NewsCardV4:
         self.red_dark = "#8B0000"
         
         # Fonts - match reference exactly
-        # Reference uses bold sans-serif for English bullets
         self.font_logo = load_font(FONTS["poppins_bold"], 60)
-        self.font_banner = load_font(FONTS["poppins_bold"], 48)  # LATEST NEWS 48px
-        self.font_date = load_font(FONTS["poppins_regular"], 22)  # Date/time 22px gold
-        self.font_section = load_font(FONTS["poppins_bold"], 28)  # ENGLISH / ROMAN URDU 28px gold bold
-        self.font_bullet = load_font(FONTS["poppins_bold"], 26)  # Bullet white bold 26px
+        self.font_banner = load_font(FONTS["poppins_bold"], 48)
+        self.font_date = load_font(FONTS["poppins_regular"], 22)
+        self.font_section = load_font(FONTS["poppins_bold"], 28)
+        self.font_bullet = load_font(FONTS["poppins_bold"], 26)
         self.font_bullet_small = load_font(FONTS["poppins_bold"], 24)
-        self.font_footer = load_font(FONTS["poppins_regular"], 18)  # Verified gray 18px
-        self.font_credit = load_font(FONTS["poppins_bold"], 20)  # Credit gold 20px bold
+        self.font_footer = load_font(FONTS["poppins_regular"], 18)
+        self.font_credit = load_font(FONTS["poppins_bold"], 20)
 
     def generate(self, news_data, output_path=None):
-        """Generate card matching reference image exactly"""
+        """Generate card matching reference image exactly - dynamic height"""
         if output_path is None:
             OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_path = str(OUTPUT_DIR / f"NR_News_{ts}.png")
+
+        # First, calculate required height based on bullets
+        # Estimate: logo 150 + banner 70 + date 40 + English section 40 + 3 bullets * (2 lines *32 +12) + Roman section 40 + 3 bullets * (2 lines*32+12) + footer 90
+        english_bullets = news_data.get('english_bullets', []) or news_data.get('urdu_bullets', [])[:3]
+        roman_bullets = news_data.get('roman_urdu_bullets', []) or news_data.get('roman_bullets', [])[:3]
+        
+        # Filter Urdu
+        filtered_english = []
+        for b in english_bullets:
+            if b and not any('\u0600' <= c <= '\u06FF' for c in b):
+                filtered_english.append(b)
+        if len(filtered_english) >= 1:
+            english_bullets = filtered_english
+        
+        english_bullets = english_bullets[:3]
+        roman_bullets = roman_bullets[:3]
+        
+        # Fallback
+        if len(english_bullets) < 3:
+            fallbacks_en = [
+                "What nonsense? KTR slams Revanth over Ram vs Shiva comment.",
+                "Political Atmosphere Heats Up in Nalgonda Over MLA Elections.",
+                "Opposition protest disrupts council meeting at Pala municipality in Keralam's Kottayam.",
+            ]
+            for fb in fallbacks_en:
+                if fb not in english_bullets and len(english_bullets) < 3:
+                    english_bullets.append(fb)
+        
+        if len(roman_bullets) < 3:
+            fallbacks_ro = [
+                "Kya bakwas hai? KTR ne Revanth ko Ram vs Shiva comment par kharij kharij suna di.",
+                "Nalgonda mein MLA intikhabat par siyasi garmi barh gayi.",
+                "Keralam ke Kottayam mein Pala municipality mein muzahamati council meeting mein khalal.",
+            ]
+            for fb in fallbacks_ro:
+                if fb not in roman_bullets and len(roman_bullets) < 3:
+                    roman_bullets.append(fb)
+
+        # Calculate dynamic height - more compact like reference
+        # Base: 12 top border + 150 logo + 20 separator + 70 banner + 15 date + 40 = 307
+        # Each bullet ~ 2 lines *32 +12 = 76, 3 bullets = 228 per section
+        # English section: 40 header + 228 = 268
+        # Roman section: 40 + 228 = 268
+        # Footer: 90
+        # Total: 307+268+268+90 = 933, plus padding 100 = ~1033
+        # Use 1080x1080 for more compact like reference (or 1080x1350 with less empty)
+        # Let's use 1080x1080 for compact reference perfect, or 1080x1200 for slightly taller
+        # User reference image appears to be ~1080x1350 but with content filling more? We'll use 1080x1080 for Facebook optimal, but keep 1350 option
+        # For now, use dynamic height: min 1080, max 1350, based on content
+        base_height = 350  # logo+banner+date
+        bullet_height_per = 85  # per bullet average (2 lines)
+        english_height = 40 + len(english_bullets) * bullet_height_per + 20
+        roman_height = 40 + len(roman_bullets) * bullet_height_per + 20
+        footer_height = 90
+        content_height = base_height + english_height + roman_height + footer_height + 50
+        
+        # Use compact height like reference - 1080 for 3+3 bullets, 1350 if more content
+        # Reference image with 3+3 bullets was ~1080x1350 but with less empty? We'll use 1080x1080 for compact, or dynamic
+        # Let's use 1080x1080 for optimal Facebook, but allow 1350 if needed
+        # For 3+3 bullets, use 1080 height to reduce empty space
+        if len(english_bullets) + len(roman_bullets) <= 6:
+            self.h = 1080  # Compact like reference for 3+3 bullets
+        else:
+            self.h = min(1350, max(1080, content_height))
 
         # Create base image black
         img = Image.new('RGB', (self.w, self.h), self.bg)
