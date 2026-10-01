@@ -1,7 +1,7 @@
 """
-National Reporter - Facebook Graph API Publisher
-Posts generated image + Urdu + Roman Urdu text to Facebook Page
-https://www.facebook.com/profile.php?id=100085918100245
+National Reporter - Facebook Graph API Publisher V23
+- Supports new English + Roman Urdu reference card format
+- Permanent credit Abu Aimal & Aimal Akram
 """
 import os
 import logging
@@ -20,6 +20,30 @@ class FacebookPublisher:
         self.page_id = page_id or FACEBOOK_PAGE_ID
         self.access_token = access_token or FACEBOOK_PAGE_ACCESS_TOKEN
         self.base_url = GRAPH_BASE
+        if self.access_token:
+            self.access_token = self._resolve_page_token_if_system_user(self.access_token)
+
+    def _resolve_page_token_if_system_user(self, token: str) -> str:
+        try:
+            me_url = f"{self.base_url}/me?access_token={token}"
+            r = requests.get(me_url, timeout=10)
+            if r.status_code == 200:
+                me_data = r.json()
+                if me_data.get('id') == '122098613787496439' or 'nr_api_bot' in me_data.get('name','').lower():
+                    logger.info(f"Detected system user token (never expiring) - {me_data.get('name')} - getting Page token")
+                    accounts_url = f"{self.base_url}/me/accounts?access_token={token}"
+                    r2 = requests.get(accounts_url, timeout=10)
+                    if r2.status_code == 200:
+                        accounts_data = r2.json()
+                        for page in accounts_data.get('data', []):
+                            if page['id'] == self.page_id:
+                                page_token = page['access_token']
+                                logger.info(f"Got never-expiring Page token from system user - length {len(page_token)} - tasks {page.get('tasks', [])}")
+                                return page_token
+                        logger.warning(f"Page {self.page_id} not found in system user accounts")
+        except Exception as e:
+            logger.warning(f"Failed to resolve system user Page token: {e}")
+        return token
 
     def get_credit_name(self) -> str:
         try:
@@ -33,52 +57,61 @@ class FacebookPublisher:
 
     def format_post_text(self, news_data: Dict) -> str:
         """
-        Format text for Facebook post - NO LINKS constraint
-        Includes Urdu bullets + Roman Urdu bullets
+        V23 Format: English + Roman Urdu (like reference image)
+        Also supports legacy Urdu + Roman for compatibility
         """
+        # New V23 format: English bullets + Roman Urdu
+        english_bullets = news_data.get('english_bullets', []) or news_data.get('urdu_bullets', [])
+        roman_bullets = news_data.get('roman_urdu_bullets', []) or news_data.get('roman_bullets', [])
         headline = news_data.get('headline', '')
         headline_roman = news_data.get('headline_roman', '')
-        urdu_bullets = news_data.get('urdu_bullets', [])
-        roman_bullets = news_data.get('roman_urdu_bullets', [])
-        category = news_data.get('category', 'News')
+        category = news_data.get('category', 'Latest News')
         date_str = news_data.get('date_str', '')
         time_str = news_data.get('time_str', '')
 
-        # Build post
-        text = f"📰 {headline}\n"
-        if headline_roman and headline_roman != headline:
-            text += f"{headline_roman}\n"
-        text += "\n"
-        text += "━━━━━━━━━━━━━━━━━━━━\n"
-        text += "📍 اردو میں اہم نکات:\n"
-        for bullet in urdu_bullets:
-            text += f"• {bullet}\n"
-        text += "\n"
-        text += "━━━━━━━━━━━━━━━━━━━━\n"
-        text += "📍 Roman Urdu Summary:\n"
-        for bullet in roman_bullets:
-            text += f"• {bullet}\n"
-        text += "\n"
-        text += "━━━━━━━━━━━━━━━━━━━━\n"
+        # Detect if headline is Urdu script (legacy) or English (new V23)
+        is_headline_urdu = any('\u0600' <= c <= '\u06FF' for c in headline) if headline else False
+
+        text = ""
+        if is_headline_urdu:
+            # Legacy Urdu format
+            text += f"📰 {headline}\n"
+            if headline_roman and headline_roman != headline:
+                text += f"{headline_roman}\n"
+            text += "\n━━━━━━━━━━━━━━━━━━━━\n"
+            text += "📍 اردو میں اہم نکات:\n"
+            for bullet in english_bullets[:5]:
+                text += f"• {bullet}\n"
+            text += "\n━━━━━━━━━━━━━━━━━━━━\n"
+            text += "📍 Roman Urdu Summary:\n"
+            for bullet in roman_bullets[:5]:
+                text += f"• {bullet}\n"
+        else:
+            # V23 New Reference Format: English + Roman Urdu
+            text += f"📰 {headline}\n"
+            if headline_roman and headline_roman.lower() != headline.lower():
+                text += f"{headline_roman}\n"
+            text += "\n━━━━━━━━━━━━━━━━━━━━\n"
+            text += "📍 ENGLISH - Latest News:\n"
+            for bullet in english_bullets[:3]:
+                text += f"• {bullet}\n"
+            text += "\n━━━━━━━━━━━━━━━━━━━━\n"
+            text += "📍 ROMAN URDU - Taza Khabar:\n"
+            for bullet in roman_bullets[:3]:
+                text += f"• {bullet}\n"
+
+        text += "\n━━━━━━━━━━━━━━━━━━━━\n"
         text += f"🏷️ Category: {category}\n"
         text += f"🕒 {date_str} | {time_str}\n"
-        text += f"\n#NationalReporter #NR #Hyderabad #Telangana #UrduNews #BreakingNews"
-        # Permanent Credit at end - Abu Aimal & Aimal Akram
+        text += f"\n#NationalReporter #NR #Hyderabad #Telangana #EnglishNews #RomanUrdu #BreakingNews #LatestNews"
         text += f"\n\n-- {self.get_credit_name()} | National Reporter Team"
-        # Note: hashtags are okay, NOT hyperlinks
 
-        # Ensure no URLs slipped in
-        # (double-check)
         import re
         text = re.sub(r'http\S+|www\.\S+', '', text)
         
         return text.strip()
 
     def publish_photo(self, image_path: str, news_data: Dict) -> Dict:
-        """
-        Publish photo post to Facebook Page
-        Uses /{page-id}/photos endpoint
-        """
         if not self.is_configured():
             logger.error("Facebook not configured - missing PAGE_ID or ACCESS_TOKEN")
             return {
@@ -90,24 +123,18 @@ class FacebookPublisher:
             }
 
         url = f"{self.base_url}/{self.page_id}/photos"
-        
         caption = self.format_post_text(news_data)
         
         try:
             with open(image_path, 'rb') as img_file:
-                files = {
-                    'source': img_file
-                }
-                data = {
-                    'caption': caption,
-                    'access_token': self.access_token
-                }
-                logger.info(f"Publishing to Facebook Page {self.page_id}...")
+                files = {'source': img_file}
+                data = {'caption': caption, 'access_token': self.access_token}
+                logger.info(f"Publishing V23 to Facebook Page {self.page_id}... English+Roman card")
                 response = requests.post(url, files=files, data=data, timeout=60)
                 result = response.json()
 
                 if response.status_code == 200 and 'id' in result:
-                    logger.info(f"Successfully published! Post ID: {result['id']}")
+                    logger.info(f"Successfully published V23! Post ID: {result['id']}")
                     return {
                         "success": True,
                         "post_id": result.get('id'),
@@ -115,7 +142,7 @@ class FacebookPublisher:
                         "response": result
                     }
                 else:
-                    logger.error(f"Facebook API error: {result}")
+                    logger.error(f"Facebook API error V23: {result}")
                     return {
                         "success": False,
                         "error": result,
@@ -123,62 +150,12 @@ class FacebookPublisher:
                     }
 
         except Exception as e:
-            logger.exception(f"Exception during Facebook publish: {e}")
+            logger.exception(f"Exception during Facebook publish V23: {e}")
             return {
                 "success": False,
                 "error": str(e)
             }
 
-    def publish_feed_with_image_url(self, image_url: str, news_data: Dict) -> Dict:
-        """
-        Alternative method if image is hosted via URL (for Make.com/Bannerbear flow)
-        """
-        if not self.is_configured():
-            return {"success": False, "error": "Not configured", "simulated": True}
-
-        url = f"{self.base_url}/{self.page_id}/feed"
-        message = self.format_post_text(news_data)
-
-        data = {
-            'message': message,
-            'link': image_url,  # Note: we avoid links per constraint, but if using image URL hosting, this is the image itself
-            'access_token': self.access_token
-        }
-        # Actually for photo URL, better to use picture param? But we use photos endpoint preferred.
-        # This method kept for compatibility
-
-        try:
-            response = requests.post(url, data=data, timeout=30)
-            result = response.json()
-            if response.status_code == 200:
-                return {"success": True, "post_id": result.get('id'), "response": result}
-            else:
-                return {"success": False, "error": result}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
 def publish_to_facebook(image_path: str, news_data: Dict) -> Dict:
     publisher = FacebookPublisher()
     return publisher.publish_photo(image_path, news_data)
-
-if __name__ == "__main__":
-    # Test formatting without actual publish
-    test_data = {
-        "headline": "حیدرآباد میں بڑی کارروائی، پولیس کی اہم پیش رفت",
-        "headline_roman": "Hyderabad Mein Badi Karwai, Police Ki Aham Pesh Raft",
-        "urdu_bullets": [
-            "حیدرآباد کے ایس آر نگر میں مشتبہ حالات میں خاتون کی لاش برآمد ہوئی ہے",
-            "پولیس نے واقعے کی تحقیقات شروع کر دی ہیں"
-        ],
-        "roman_urdu_bullets": [
-            "Hyderabad ke SR Nagar mein mushtaba halaat mein khatoon ki laash baramad hui hai",
-            "Police ne waqiye ki tehqiqaat shuru kar di hain"
-        ],
-        "category": "Hyderabad",
-        "date_str": "29 September 2026",
-        "time_str": "05:30 PM"
-    }
-    pub = FacebookPublisher()
-    text = pub.format_post_text(test_data)
-    print(text)
-    print("\n--- Configured:", pub.is_configured())

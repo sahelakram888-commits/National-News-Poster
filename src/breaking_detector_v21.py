@@ -1,7 +1,5 @@
 """
-Breaking Detector V23 FINAL - Permanent fix Tabassum Begum 5x + TSA Swimmers
-- Extended permanent blacklist: Woman Married OYO + Tabassum Begum Ball Badminton + TSA Swimmers overused
-- Hourly rotation + today dedup saves ALL bullet titles
+Breaking Detector V21 - Permanent fix 32 cards same news
 """
 import json, logging, hashlib, os
 from datetime import datetime
@@ -14,39 +12,18 @@ BREAKING_KEYWORDS = BREAKING_NEWS["keywords"]
 LAST_POSTED_FILE = OUTPUT_DIR / "last_posted.json"
 TODAY_POSTED_FILE = OUTPUT_DIR / "posted_today.json"
 
-# V23 PERMANENT BLACKLIST - Fixes Tabassum 5x + 32 cards same news + TSA overuse
 PERMANENT_BLACKLIST = [
     "Woman Who Married Lover in Temple Found Murdered at Hyderabad OYO",
-    "woman who married lover in temple found murdered at hyderabad oyo",
     "mandir me premi se shaadi",
     "مندر میں پریمی سے شادی",
-    "Nizamabad’s Tabassum Begum Shines at Senior National Ball Badminton Championship",
-    "Nizamabad's Tabassum Begum Shines at Senior National Ball Badminton Championship",
-    "tabassum begum shines at senior national ball badminton championship",
-    "تبسم بیگم نے سینئر نیشنل بال بیڈمنٹن",
-    "Tabassum Begum",
-    "TSA Felicitates 15 Telangana Swimmers for National Masters Championship Participation",
-    "tsa felicitates 15 telangana swimmers",
-    "تلنگانہ کی سیاست میں بڑی ہلچل",
-    "حیدرآباد اور تلنگانہ سے تازہ ترین اہم خبر سامنے آئی ہے",
 ]
 
 def is_permanently_blacklisted(title: str) -> bool:
-    if not title:
-        return False
-    lower = title.lower().strip()
+    lower = title.lower()
     for black in PERMANENT_BLACKLIST:
         if black.lower() in lower or lower in black.lower():
             return True
     if "married lover in temple" in lower and "hyderabad oyo" in lower:
-        return True
-    if "tabassum begum" in lower and "ball badminton" in lower:
-        return True
-    if "tsa felicitates" in lower and "telangana swimmers" in lower:
-        return True
-    if "پریمی سے شادی" in title:
-        return True
-    if "تبسم بیگم" in title:
         return True
     return False
 
@@ -74,14 +51,12 @@ def save_last_posted(titles: List[str], is_breaking: bool = False):
     try:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         data = load_last_posted()
-        titles_str = "".join(sorted([t for t in titles[:5] if t][:3])).lower()
+        titles_str = "".join(sorted(titles[:3])).lower()
         titles_hash = hashlib.md5(titles_str.encode()).hexdigest()
         unique_titles = []
         seen = set()
         for t in titles + data.get("titles", []):
             if not t:
-                continue
-            if is_permanently_blacklisted(t):
                 continue
             tl = t.lower().strip()
             if tl not in seen and len(tl) > 10:
@@ -135,7 +110,7 @@ def get_facebook_recent_posts(limit: int = 30) -> List[str]:
         pass
     return []
 
-def is_duplicate_title_v23(title: str, recent_fb_posts: List[str] = None, last_posted_data: Dict = None, today_posted: Dict = None) -> bool:
+def is_duplicate_title_v21(title: str, recent_fb_posts: List[str] = None, last_posted_data: Dict = None, today_posted: Dict = None) -> bool:
     if today_posted is None:
         today_posted = load_today_posted()
     if last_posted_data is None:
@@ -147,7 +122,8 @@ def is_duplicate_title_v23(title: str, recent_fb_posts: List[str] = None, last_p
         return True
     
     lower_title = title.lower().strip()
-    for posted in today_posted.get('titles', [])[-100:]:
+    # Check today posted
+    for posted in today_posted.get('titles', [])[-50:]:
         if lower_title == posted.lower().strip():
             return True
         if len(lower_title) > 25 and lower_title[:25] == posted.lower().strip()[:25]:
@@ -176,15 +152,15 @@ def is_duplicate_title_v23(title: str, recent_fb_posts: List[str] = None, last_p
 
 def calculate_breaking_score(title: str, source: str = "") -> int:
     if is_permanently_blacklisted(title):
-        return -100
+        return -10
     score = 0
     lower = title.lower()
     breaking_matches = sum(1 for kw in BREAKING_KEYWORDS if kw in lower)
     score += min(breaking_matches * 2, 6)
-    important_persons = ['cm', 'pm', 'minister', 'kcr', 'ktr', 'revanth', 'owaisi', 'modi', 'rahul', 'governor', 'high court', 'supreme court', 'mayor', 'mla', 'mp', 'eci']
+    important_persons = ['cm', 'pm', 'minister', 'kcr', 'ktr', 'revanth', 'owaisi', 'modi', 'rahul', 'governor', 'high court', 'supreme court', 'mayor', 'mla', 'mp']
     if any(p in lower for p in important_persons):
         score += 2
-    action_words = ['resigns', 'arrested', 'wins', 'loses', 'announces', 'declares', 'dies', 'accident', 'blast', 'firing', 'protest', 'result', 'withdraws', 'attacks', 'seeks', 'demands', 'detained', 'seized', 'slams', 'heats up', 'disrupts']
+    action_words = ['resigns', 'arrested', 'wins', 'loses', 'announces', 'declares', 'dies', 'accident', 'blast', 'firing', 'protest', 'result', 'withdraws', 'attacks', 'seeks', 'demands', 'detained', 'seized']
     if any(a in lower for a in action_words):
         score += 2
     if 20 <= len(title) <= 180:
@@ -206,10 +182,10 @@ def detect_breaking_news(aggregated_data: Dict) -> Dict:
     for title in all_titles:
         if is_permanently_blacklisted(title):
             continue
-        if is_duplicate_title_v23(title, recent_fb_posts, last_posted, today_posted):
+        if is_duplicate_title_v21(title, recent_fb_posts, last_posted, today_posted):
             continue
         score = calculate_breaking_score(title)
-        if score < -50:
+        if score < 0:
             continue
         scored_stories.append({
             "title": title,
@@ -220,7 +196,7 @@ def detect_breaking_news(aggregated_data: Dict) -> Dict:
     scored_stories.sort(key=lambda x: x['score'], reverse=True)
     breaking_stories = [s for s in scored_stories if s['is_breaking']]
     
-    logger.info(f"Breaking detection V23: {len(breaking_stories)} breaking, {len(scored_stories)} new (deduped, blacklist), threshold {BREAKING_NEWS['importance_threshold']}")
+    logger.info(f"Breaking detection V21: {len(breaking_stories)} breaking, {len(scored_stories)} new (deduped, blacklist), threshold {BREAKING_NEWS['importance_threshold']}")
     
     return {
         "is_breaking": len(breaking_stories) > 0,
@@ -240,7 +216,7 @@ def should_post_now(aggregated_data: Dict, is_routine_schedule: bool = False) ->
     
     new_count = 0
     for t in all_titles:
-        if not is_permanently_blacklisted(t) and not is_duplicate_title_v23(t, recent_fb, last_posted, today_posted):
+        if not is_permanently_blacklisted(t) and not is_duplicate_title_v21(t, recent_fb, last_posted, today_posted):
             new_count += 1
     
     decision = {
@@ -261,16 +237,16 @@ def should_post_now(aggregated_data: Dict, is_routine_schedule: bool = False) ->
     elif is_routine_schedule:
         if new_count == 0 and breaking_result["total_new"] == 0:
             decision["should_post"] = False
-            decision["reason"] = f"No new titles after dedup+blacklist V23 (all {len(all_titles)} already posted or blacklisted) - skipping to avoid Tabassum 5x"
-            decision["priority"] = "SKIP_DUPLICATE_BLACKLIST_V23"
+            decision["reason"] = f"No new titles after dedup+blacklist (all {len(all_titles)} already posted or blacklisted) - skipping to avoid 32 cards same news"
+            decision["priority"] = "SKIP_DUPLICATE_BLACKLIST"
         else:
             decision["should_post"] = True
-            decision["reason"] = f"Routine hourly V23 - {new_count} new titles after dedup+blacklist, today {len(today_posted.get('titles',[]))} posted"
-            decision["priority"] = "ROUTINE_V23_PERMANENT_FIX"
+            decision["reason"] = f"Routine hourly - {new_count} new titles after dedup+blacklist, today {len(today_posted.get('titles',[]))} posted"
+            decision["priority"] = "ROUTINE_V21_PERMANENT_FIX"
     else:
         decision["should_post"] = False
         decision["reason"] = "Not routine and no breaking"
         decision["priority"] = "SKIP"
     
-    logger.info(f"Post decision V23: {decision['should_post']} | {decision['reason']} | Priority: {decision.get('priority')}")
+    logger.info(f"Post decision V21: {decision['should_post']} | {decision['reason']} | Priority: {decision.get('priority')}")
     return decision

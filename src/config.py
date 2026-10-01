@@ -1,7 +1,8 @@
 """
-National Reporter - Configuration V4
-- Large fonts, Politics, Munsif/Etemaad Only
-- Breaking News: immediate coverage as it happens + routine every 2h
+National Reporter - Configuration V23 FINAL
+- Reference card: English + Roman Urdu, red LATEST NEWS banner
+- Permanent fix Tabassum 5x + Gemini API support
+- Hourly + Breaking 15min
 """
 import os
 from pathlib import Path
@@ -20,7 +21,7 @@ BRAND = {
     "name": "National Reporter",
     "short": "NR",
     "logo_path": str(ASSETS_DIR / "logo.png"),
-    "credit": "Abu Aimal & Aimal Akram",  # Permanent credit
+    "credit": "Abu Aimal & Aimal Akram",
     "theme": {
         "background": "#0A0A0A",
         "gold_primary": "#D4AF37",
@@ -32,19 +33,19 @@ BRAND = {
         "white": "#FFFFFF",
         "gray": "#E0E0E0",
         "card_bg": "#121212",
-        "red_breaking": "#FF0000",
+        "red_breaking": "#C41E2F",
     }
 }
 
-# Permanent Credit - Set once for all
+# Permanent Credit
 CREDIT = {
     "name": "Abu Aimal & Aimal Akram",
-    "show_in_image": True,  # After small logo
-    "show_in_footer": True,  # At end
-    "show_in_caption": True,  # At end of FB post
+    "show_in_image": True,
+    "show_in_footer": True,
+    "show_in_caption": True,
 }
 
-# Scraping Sources - Munsif & Etemaad ONLY for Urdu News
+# Scraping Sources - Munsif + Etemaad Priority + India Today + Indian Express Fresh Morning
 NEWS_SOURCES = {
     "munsif": {
         "name": "Munsif Daily",
@@ -76,6 +77,45 @@ NEWS_SOURCES = {
             "world": "https://www.en.etemaaddaily.com/world/international",
             "regional": "https://www.en.etemaaddaily.com/world"
         }
+    },
+    "india_today": {
+        "name": "India Today",
+        "url": "https://www.indiatoday.in/",
+        "rss": "https://www.indiatoday.in/rss/1206578",
+        "priority": 2,
+        "categories": {
+            "politics": "https://www.indiatoday.in/politics",
+            "breaking": "https://www.indiatoday.in/",
+            "hyderabad": "https://www.indiatoday.in/cities",
+            "telangana": "https://www.indiatoday.in/cities",
+            "national": "https://www.indiatoday.in/india",
+            "world": "https://www.indiatoday.in/world",
+        }
+    },
+    "indian_express": {
+        "name": "Indian Express",
+        "url": "https://indianexpress.com/",
+        "rss": "https://indianexpress.com/feed/",
+        "priority": 2,
+        "categories": {
+            "politics": "https://indianexpress.com/section/political-pulse/",
+            "breaking": "https://indianexpress.com/latest-news/",
+            "hyderabad": "https://indianexpress.com/section/cities/hyderabad/",
+            "telangana": "https://indianexpress.com/section/cities/",
+            "national": "https://indianexpress.com/section/india/",
+            "world": "https://indianexpress.com/section/world/",
+        }
+    },
+    "ndtv": {
+        "name": "NDTV",
+        "url": "https://www.ndtv.com/",
+        "rss": "https://feeds.feedburner.com/ndtvnews-india-news",
+        "priority": 3,
+        "categories": {
+            "politics": "https://www.ndtv.com/india-news",
+            "national": "https://www.ndtv.com/india-news",
+            "world": "https://www.ndtv.com/world-news",
+        }
     }
 }
 
@@ -85,42 +125,45 @@ CONTENT_PREFS = {
     "bullets_count": "3-5",
     "morning_hours": [6, 7, 8, 9, 10, 11],
     "verification_required": True,
-    "focus": "Munsif & Etemaad Only, Politics First, Verified Only",
+    "focus": "Munsif & Etemaad Only, Politics First, Verified Only, English+Roman Card Reference",
     "breaking_enabled": True,
 }
 
 # Breaking News Detection
 BREAKING_NEWS = {
     "enabled": True,
-    "check_interval_minutes": 15,  # Check every 15 min for breaking news
-    "routine_interval_hours": 2,  # Routine every 2 hours
+    "check_interval_minutes": 15,
+    "routine_interval_hours": 1,  # Hourly now per user request
     "keywords": [
         'breaking', 'urgent', 'just in', 'big breaking', 'flash', 'alert',
         'major', 'important', 'big news', 'exclusive', 'live',
         'resigns', 'arrested', 'accident', 'blast', 'firing', 'protest',
         'election', 'result', 'wins', 'loses', 'announces', 'declares',
         'cm', 'pm', 'minister', 'governor', 'high court', 'supreme court',
-        'kcr', 'ktr', 'revanth', 'owaisi', 'modi', 'rahul', 'bjp', 'congress', 'brs'
+        'kcr', 'ktr', 'revanth', 'owaisi', 'modi', 'rahul', 'bjp', 'congress', 'brs',
+        'slams', 'heats up', 'disrupts', 'killed', 'murdered', 'attack', 'raid', 'seized'
     ],
-    "importance_threshold": 8,  # Score 8-10 is breaking
-    "immediate_post": True,  # Post immediately when breaking detected
+    "importance_threshold": 8,
+    "immediate_post": True,
 }
 
-# AI Configuration
+# AI Configuration - OpenAI + Gemini (user added Gemini API)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
 # Facebook Graph API
 FACEBOOK_PAGE_ID = os.getenv("FACEBOOK_PAGE_ID", "239472476226069")
 FACEBOOK_PAGE_ACCESS_TOKEN = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN", "")
 FACEBOOK_GRAPH_VERSION = "v20.0"
 
-# Scheduling
-SCHEDULE_INTERVAL_HOURS = 2
+# Scheduling - Hourly per user
+SCHEDULE_INTERVAL_HOURS = 1
 BREAKING_CHECK_MINUTES = 15
 
-# Image Generation
-IMAGE_SIZE = (1080, 1080)
+# Image Generation V23 - Reference card 1080x1350 vertical
+IMAGE_SIZE = (1080, 1350)  # Reference image is vertical
 FONTS = {
     "urdu_nastaliq": str(FONTS_DIR / "NotoNastaliqUrdu-Regular.ttf"),
     "urdu_naskh": str(FONTS_DIR / "NotoNaskhArabic-Regular.ttf"),
@@ -135,10 +178,11 @@ FONT_SIZES = {
     "urdu_bullet": 36,
     "roman_bullet": 28,
     "roman_bullet_bold": 28,
-    "section_title": 30,
-    "date_time": 18,
-    "footer": 16,
-    "category_badge": 22,
+    "section_title": 28,
+    "date_time": 22,
+    "footer": 18,
+    "category_badge": 48,  # LATEST NEWS banner 48px
+    "english_bullet": 26,  # English bullet white bold 26px like reference
 }
 
 PREFERRED_SOURCES = ["Munsif Daily", "Etemaad Daily"]

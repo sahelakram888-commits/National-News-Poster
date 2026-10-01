@@ -1,17 +1,15 @@
-name: National Reporter - Auto Poster (Routine + Breaking - Never Stops)
+name: National Reporter V23 FINAL PERMANENT - No Tabassum 5x Ever Again
 
 on:
   schedule:
-    # Routine every 2 hours - FOREVER, never stops
-    - cron: '0 */2 * * *'
-    # Breaking news check every 15 minutes - immediate as it happens
+    - cron: '0 * * * *'
     - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       force_post:
         description: 'Force post even if duplicate'
         required: false
-        default: 'true'
+        default: 'false'
         type: choice
         options:
           - 'true'
@@ -25,132 +23,123 @@ on:
           - auto
           - routine
           - breaking
+          - clean_old
   push:
     branches: [ main ]
 
 jobs:
   post-news:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v5
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-
-    - name: Install dependencies
+    - name: Install dependencies V23 FINAL
       run: |
-        python -m pip install --upgrade pip
         pip install -r requirements.txt
-        echo "Dependencies installed"
-
-    - name: Restore last posted cache
+        pip install google-generativeai
+        echo "V23 FINAL PERMANENT - Tabassum Begum 5x NEVER AGAIN - Reference perfect English+Roman"
+    - name: Restore cache V23 FINAL NO TABASSUM
       uses: actions/cache@v4
       with:
-        path: output/last_posted.json
-        key: last-posted-${{ github.run_id }}
+        path: |
+          output/last_posted.json
+          output/posted_today.json
+        key: v23-final-no-tabassum-${{ github.run_id }}-${{ github.run_number }}
         restore-keys: |
-          last-posted-
-
-    - name: Create output dir and check secrets
+          v23-final-no-tabassum-
+          v23-final-
+    - name: Clean old cache if Tabassum present
       run: |
-        mkdir -p output
-        echo "Checking secrets..."
-        if [ -z "${{ secrets.FACEBOOK_PAGE_ID }}" ]; then
-          echo "ERROR: FACEBOOK_PAGE_ID secret not set!"
-          exit 1
-        fi
-        if [ -z "${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}" ]; then
-          echo "ERROR: FACEBOOK_PAGE_ACCESS_TOKEN secret not set!"
-          exit 1
-        fi
-        echo "Secrets OK - Page ID: ${{ secrets.FACEBOOK_PAGE_ID }}"
-
-    - name: Create .env from secrets
+        echo "Cleaning any Tabassum from cache..."
+        python3 - << 'PY'
+        import json, pathlib
+        blacklist = ["tabassum", "begum", "ball badminton", "tsa felicitates", "woman who married lover"]
+        for path in ["output/last_posted.json", "output/posted_today.json"]:
+            p = pathlib.Path(path)
+            if p.exists():
+                try:
+                    data = json.loads(p.read_text(encoding='utf-8'))
+                    before = len(data.get('titles', []))
+                    def is_black(t):
+                        l = t.lower()
+                        return any(b in l for b in blacklist)
+                    data['titles'] = [t for t in data.get('titles', []) if not is_black(t)]
+                    data['headlines'] = [h for h in data.get('headlines', []) if not is_black(h)]
+                    p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+                    print(f"Cleaned {path}: {before} -> {len(data['titles'])}")
+                except Exception as e:
+                    print(f"Failed clean {path}: {e}")
+                    p.write_text('{"date": "2026-09-30", "titles": [], "headlines": []}', encoding='utf-8')
+        PY
+    - name: Check secrets V23
+      run: |
+        if [ -z "${{ secrets.FACEBOOK_PAGE_ID }}" ]; then echo "ERROR PAGE_ID"; exit 1; fi
+        if [ -z "${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}" ]; then echo "ERROR TOKEN"; exit 1; fi
+        echo "Secrets OK V23 FINAL"
+        echo "Page 239472476226069 - Never expiring token nr_api_bot"
+        if [ -z "${{ secrets.GEMINI_API_KEY }}" ]; then echo "GEMINI_API_KEY not set - using hardcoded specific (no generic)"; else echo "GEMINI_API_KEY set - Gemini enabled"; fi
+    - name: Create .env V23 FINAL
       run: |
         cat > .env << EOL
         FACEBOOK_PAGE_ID=${{ secrets.FACEBOOK_PAGE_ID }}
         FACEBOOK_PAGE_ACCESS_TOKEN=${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
         OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
         OPENAI_MODEL=gpt-4o-mini
+        GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+        GEMINI_MODEL=gemini-1.5-flash
         EOL
         chmod 600 .env
-        echo "Env created"
-
-    - name: Determine run mode
+    - name: Determine mode V23
       id: mode
       run: |
-        HOUR=$(date +%H)
-        MINUTE=$(date +%M)
-        echo "Current time: $(date) UTC | Hour: $HOUR | Minute: $MINUTE"
         if [ "${{ github.event_name }}" = "schedule" ]; then
-          CRON="${{ github.event.schedule }}"
-          if [ "$CRON" = "0 */2 * * *" ]; then
-            echo "mode=routine" >> $GITHUB_OUTPUT
-            echo "is_routine=true" >> $GITHUB_OUTPUT
-            echo "Detected: ROUTINE (2h cycle) - Will post even if no brand new news to maintain forever"
-          else
+          if [ "${{ github.event.schedule }}" = "*/15 * * * *" ]; then
             echo "mode=breaking" >> $GITHUB_OUTPUT
             echo "is_routine=false" >> $GITHUB_OUTPUT
-            echo "Detected: BREAKING CHECK (15min) - Will post immediately if breaking & NEW"
+          else
+            echo "mode=routine" >> $GITHUB_OUTPUT
+            echo "is_routine=true" >> $GITHUB_OUTPUT
           fi
         else
           INPUT_MODE="${{ github.event.inputs.mode }}"
-          if [ "$INPUT_MODE" = "breaking" ]; then
-            echo "mode=breaking" >> $GITHUB_OUTPUT
-            echo "is_routine=false" >> $GITHUB_OUTPUT
-          else
-            echo "mode=routine" >> $GITHUB_OUTPUT
-            echo "is_routine=true" >> $GITHUB_OUTPUT
-          fi
+          if [ "$INPUT_MODE" = "breaking" ]; then echo "mode=breaking" >> $GITHUB_OUTPUT; echo "is_routine=false" >> $GITHUB_OUTPUT
+          elif [ "$INPUT_MODE" = "clean_old" ]; then echo "mode=clean_old" >> $GITHUB_OUTPUT; echo "is_routine=false" >> $GITHUB_OUTPUT
+          else echo "mode=routine" >> $GITHUB_OUTPUT; echo "is_routine=true" >> $GITHUB_OUTPUT; fi
         fi
-
-    - name: Run Breaking News Check (Every 15 min - Immediate if NEW breaking)
-      if: steps.mode.outputs.is_routine == 'false'
+    - name: Run Breaking Check V23 FINAL NO TABASSUM
+      if: steps.mode.outputs.is_routine == 'false' && steps.mode.outputs.mode != 'clean_old'
       run: |
-        echo "=== BREAKING NEWS CHECK (Every 15 min) ==="
-        echo "Checks Munsif & Etemaad for breaking news as it happens"
-        echo "Posts immediately in middle of routine 2h cycle if breaking detected"
-        python src/main.py --breaking-check --force
-        echo "Breaking check completed"
-
-    - name: Run Routine Poster (Every 2 hours - FOREVER, Never Stops)
+        echo "V23 FINAL Breaking 15min - PERMANENT FIX Tabassum 5x NEVER AGAIN"
+        echo "Blacklist: Tabassum Begum Ball Badminton, TSA Swimmers, Woman Married OYO"
+        echo "Saves ALL bullet titles to avoid 5x repeat"
+        if [ "${{ github.event.inputs.force_post }}" = "true" ]; then python src/main.py --breaking-check --force; else python src/main.py --breaking-check; fi
+    - name: Run Hourly V23 FINAL Reference Perfect
       if: steps.mode.outputs.is_routine == 'true'
       run: |
-        echo "=== ROUTINE POSTER (Every 2 hours FOREVER) ==="
-        echo "Maintains 2h cycle forever, never stops, set once for all"
-        echo "Sources: Munsif Daily & Etemaad Daily ONLY for Urdu news"
-        echo "Politics preferred, 3-5 bullets, Verified only, Large fonts, Credit: Abu Aimal & Aimal Akram"
-        echo "Morning 6-11 AM: Covers ALL sections nicely"
-        python src/main.py --once --force
-        echo "Routine post completed - 2h cycle maintained forever"
-
-    - name: Save last posted cache
+        echo "V23 FINAL PERMANENT FIXES:"
+        echo "1. Tabassum Begum 5x NEVER AGAIN - permanent blacklist + ALL bullets saved"
+        echo "2. TSA Swimmers overuse - blacklisted"
+        echo "3. Woman Married OYO 32 cards - blacklisted"
+        echo "4. Reference perfect: Black #0A0A0A Gold top 12px #D4AF37 NR logo 120px Red banner #C41E2F LATEST NEWS 48px white bold warning icon Date gold 22px ENGLISH/ROMAN URDU gold 28px vertical bar Gold dot 14px White bold 26px 3+3 bullets Footer gold line verified gray credit gold"
+        echo "5. Gemini API: GEMINI_API_KEY env google-generativeai fallback hardcoded specific no generic"
+        echo "6. Saves ALL bullet titles 15 titles to posted_today.json to avoid 5x repeat"
+        echo "7. Hourly rotation (hour*2)%len unique bullets every hour"
+        echo "8. Don't junk Facebook: robust dedup FB recent 30 + last_posted 30 + today 100 + 70% overlap"
+        if [ "${{ github.event.inputs.force_post }}" = "true" ]; then python src/main.py --once --force; else python src/main.py --once; fi
+    - name: Save cache V23 FINAL NO TABASSUM
       if: always()
       uses: actions/cache/save@v4
       with:
-        path: output/last_posted.json
-        key: last-posted-${{ github.run_id }}
-
-    - name: Upload generated images and logs
+        path: |
+          output/last_posted.json
+          output/posted_today.json
+        key: v23-final-no-tabassum-${{ github.run_id }}-${{ github.run_number }}
+    - name: Upload artifacts V23 FINAL Reference Perfect
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: news-cards-${{ steps.mode.outputs.mode }}-${{ github.run_number }}
-        path: |
-          output/
-          *.log
+        name: v23-final-no-tabassum-${{ steps.mode.outputs.mode }}-${{ github.run_number }}
+        path: output/
         retention-days: 7
-
-    - name: Check if posted
-      if: always()
-      run: |
-        echo "=== Checking output ==="
-        ls -lh output/ || echo "No output folder"
-        cat output/*.txt 2>/dev/null | tail -20 || echo "No txt files"
-        echo ""
-        echo "If you see 'Successfully published! Post ID:' above, it posted to Facebook!"
-        echo "Check your Page: https://www.facebook.com/239472476226069"

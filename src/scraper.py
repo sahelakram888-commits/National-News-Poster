@@ -65,13 +65,13 @@ def is_verified_news(title: str) -> bool:
         return False
     return True
 
-def fetch_page(url: str, timeout=15):
+def fetch_page(url: str, timeout=8):
     try:
         resp = requests.get(url, headers=HEADERS, timeout=timeout)
         resp.raise_for_status()
         return BeautifulSoup(resp.content, 'html.parser')
     except Exception as e:
-        logger.warning(f"Failed to fetch {url}: {e}")
+        logger.warning(f"Failed to fetch {url}: {e} (timeout {timeout}s)")
         return None
 
 def scrape_munsif_home() -> List[Dict]:

@@ -1,4 +1,4 @@
-# National Reporter - AI Agent Dependencies
+# National Reporter - AI Agent Dependencies V23
 requests>=2.31.0
 beautifulsoup4>=4.12.0
 lxml>=4.9.0
@@ -6,6 +6,7 @@ Pillow>=10.0.0
 python-dotenv>=1.0.0
 openai>=1.30.0
 APScheduler>=3.10.0
+google-generativeai>=0.5.0
 
 # For premium Urdu rendering (highly recommended)
 arabic-reshaper>=3.0.0
