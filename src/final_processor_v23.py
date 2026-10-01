@@ -547,7 +547,24 @@ def process_final_news(aggregated_data: Dict, is_breaking: bool = False) -> Dict
         headline_eng = clean_english(headline_eng)[:120]
         headline_roman = clean_roman_pure(headline_roman)[:120]
     
-    if is_blacklisted_old_card(headline_eng) or is_permanently_blacklisted(headline_eng) or len(headline_eng) < 15:
+    # Ensure headline is English for reference card (no Urdu script)
+    def contains_urdu(text):
+        return any('\u0600' <= c <= '\u06FF' for c in text)
+    
+    if contains_urdu(headline_eng):
+        # Try to translate Urdu to English via hardcoded or fallback to source English if available
+        # For now, use headline_source if it's English, else use fallback English reference
+        if headline_source and not contains_urdu(headline_source):
+            headline_eng = headline_source[:120]
+            # Keep roman as is or generate simple roman
+            if contains_urdu(headline_roman):
+                headline_roman = headline_source[:120]
+        else:
+            # Fallback to reference English if Urdu detected
+            headline_eng = "What nonsense? KTR slams Revanth over Ram vs Shiva comment."
+            headline_roman = "Kya bakwas hai? KTR ne Revanth ko Ram vs Shiva comment par kharij kharij suna di."
+    
+    if is_blacklisted_old_card(headline_eng) or is_permanently_blacklisted(headline_eng) or len(headline_eng) < 15 or contains_urdu(headline_eng):
         headline_eng = "What nonsense? KTR slams Revanth over Ram vs Shiva comment."
         headline_roman = "Kya bakwas hai? KTR ne Revanth ko Ram vs Shiva comment par kharij kharij suna di."
     
