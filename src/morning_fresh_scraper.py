@@ -41,11 +41,20 @@ def is_verified(title: str) -> bool:
         return False
     return True
 
-def fetch_page(url: str, timeout=8):
+def fetch_page(url: str, timeout=10):
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=timeout)
+        # Use better headers V5 to avoid 403
+        headers_v5 = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.google.com/",
+        }
+        resp = requests.get(url, headers=headers_v5, timeout=timeout)
         resp.raise_for_status()
-        return BeautifulSoup(resp.content, 'html.parser')
+        # Handle encoding issues
+        resp.encoding = resp.apparent_encoding or 'utf-8'
+        return BeautifulSoup(resp.text, 'html.parser')
     except Exception as e:
         logger.warning(f"Failed {url}: {e}")
         return None
@@ -88,46 +97,63 @@ def fetch_rss(url: str, source_name: str, category: str = "india") -> List[Dict]
 
 def scrape_munsif_fresh() -> List[Dict]:
     stories = []
-    soup = fetch_page("https://munsifdaily.com/", timeout=8)
-    if soup:
-        for el in soup.find_all(['h2','h3'], limit=20):
-            title = clean_text(el.get_text())
-            if not is_verified(title):
-                continue
-            is_pol = any(k in title.lower() for k in POLITICS_KEYWORDS)
-            stories.append({
-                "source": "Munsif Daily",
-                "title": title,
-                "category": "politics" if is_pol else "general",
-                "is_politics": is_pol,
-                "verified": True,
-                "timestamp": datetime.now().isoformat(),
-                "is_urdu": any('\u0600' <= c <= '\u06FF' for c in title)
-            })
-    return stories
-
-def scrape_etemaad_fresh() -> List[Dict]:
-    stories = []
-    soup = fetch_page("https://www.en.etemaaddaily.com/", timeout=8)
-    if soup:
-        for sel in ['h4','h3','h2']:
-            for el in soup.find_all(sel, limit=20):
+    # V5: Scrape category pages for truly fresh news, not just homepage
+    urls = [
+        ("https://munsifdaily.com/", "general"),
+        ("https://munsifdaily.com/category/political-news/", "politics"),
+        ("https://munsifdaily.com/category/hyderabad-news/", "hyderabad"),
+        ("https://munsifdaily.com/category/telangana-news/", "telangana"),
+    ]
+    for url, cat in urls:
+        soup = fetch_page(url, timeout=10)
+        if soup:
+            for el in soup.find_all(['h2','h3'], limit=15):
                 title = clean_text(el.get_text())
                 if not is_verified(title):
                     continue
-                is_pol = any(k in title.lower() for k in POLITICS_KEYWORDS)
+                is_pol = any(k in title.lower() for k in POLITICS_KEYWORDS) or cat=="politics"
                 stories.append({
-                    "source": "Etemaad Daily",
+                    "source": "Munsif Daily",
                     "title": title,
-                    "category": "politics" if is_pol else "general",
+                    "category": cat if cat!="general" else ("politics" if is_pol else "general"),
                     "is_politics": is_pol,
                     "verified": True,
                     "timestamp": datetime.now().isoformat(),
                     "is_urdu": any('\u0600' <= c <= '\u06FF' for c in title)
                 })
-            if stories:
-                break
-    return stories[:15]
+        time.sleep(0.5)
+    return stories
+
+def scrape_etemaad_fresh() -> List[Dict]:
+    stories = []
+    urls = [
+        ("https://www.en.etemaaddaily.com/", "general"),
+        ("https://www.en.etemaaddaily.com/world/national", "india"),
+        ("https://www.en.etemaaddaily.com/world/hyderabad", "hyderabad"),
+        ("https://www.en.etemaaddaily.com/world/telangana", "telangana"),
+    ]
+    for url, cat in urls:
+        soup = fetch_page(url, timeout=10)
+        if soup:
+            for sel in ['h4','h3','h2']:
+                for el in soup.find_all(sel, limit=15):
+                    title = clean_text(el.get_text())
+                    if not is_verified(title):
+                        continue
+                    is_pol = any(k in title.lower() for k in POLITICS_KEYWORDS) or "election" in title.lower() or "minister" in title.lower() or "cm" in title.lower() or "mla" in title.lower()
+                    stories.append({
+                        "source": "Etemaad Daily",
+                        "title": title,
+                        "category": cat if cat!="general" else ("politics" if is_pol else "general"),
+                        "is_politics": is_pol,
+                        "verified": True,
+                        "timestamp": datetime.now().isoformat(),
+                        "is_urdu": any('\u0600' <= c <= '\u06FF' for c in title)
+                    })
+                if len([s for s in stories if s['category']==cat]) >= 5:
+                    break
+        time.sleep(0.5)
+    return stories[:20]
 
 def scrape_india_today_fresh() -> List[Dict]:
     stories = []

@@ -147,29 +147,33 @@ def is_duplicate_title_v23(title: str, recent_fb_posts: List[str] = None, last_p
         return True
     
     lower_title = title.lower().strip()
+    # Check today posted - exact match only for today (less aggressive)
     for posted in today_posted.get('titles', [])[-100:]:
         if lower_title == posted.lower().strip():
             return True
-        if len(lower_title) > 25 and lower_title[:25] == posted.lower().strip()[:25]:
+        # Only check prefix if very similar and long (40 chars not 25) to allow fresh news
+        if len(lower_title) > 40 and len(posted) > 40 and lower_title[:40] == posted.lower().strip()[:40]:
             return True
     
-    for posted_title in last_posted_data.get('titles', [])[:30]:
+    # Check last posted - more lenient, only exact or high overlap 85% (not 70%)
+    for posted_title in last_posted_data.get('titles', [])[:20]:  # Only last 20, not 30, to allow fresh
         if not posted_title:
             continue
         pt_lower = posted_title.lower().strip()
         if lower_title == pt_lower:
             return True
-        if len(lower_title) > 25 and len(pt_lower) > 25 and lower_title[:25] == pt_lower[:25]:
+        if len(lower_title) > 40 and len(pt_lower) > 40 and lower_title[:40] == pt_lower[:40]:
             return True
         words1 = set(lower_title.split())
         words2 = set(pt_lower.split())
-        if len(words1) > 3 and len(words2) > 3:
+        if len(words1) > 4 and len(words2) > 4:
             overlap = len(words1 & words2) / max(len(words1), len(words2))
-            if overlap > 0.7:
+            if overlap > 0.85:  # Increased from 0.7 to 0.85 to allow fresh news
                 return True
     
-    for fb_msg in recent_fb_posts[:30]:
-        if len(lower_title) > 20 and lower_title[:20] in fb_msg:
+    # Check FB recent - only exact substring 30 chars (not 20) to allow fresh
+    for fb_msg in recent_fb_posts[:20]:  # Only 20, not 30
+        if len(lower_title) > 30 and lower_title[:30] in fb_msg:
             return True
     
     return False

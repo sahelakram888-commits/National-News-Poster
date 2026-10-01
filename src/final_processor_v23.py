@@ -193,26 +193,27 @@ def is_duplicate_title(title: str, recent_fb_posts: List[str], last_posted: Dict
     if is_permanently_blacklisted(title):
         return True
     lower_title = title.lower().strip()
-    for posted in today_posted.get('titles', [])[-50:]:
+    # Less aggressive dedup - allow fresh news
+    for posted in today_posted.get('titles', [])[-100:]:
         if lower_title == posted.lower().strip():
             return True
-        if len(lower_title) > 25 and lower_title[:25] == posted.lower().strip()[:25]:
+        if len(lower_title) > 40 and len(posted) > 40 and lower_title[:40] == posted.lower().strip()[:40]:
             return True
-    for posted_title in last_posted.get('titles', [])[:30]:
+    for posted_title in last_posted.get('titles', [])[:20]:
         if not posted_title:
             continue
         pt_lower = posted_title.lower().strip()
         if lower_title == pt_lower:
             return True
-        if len(lower_title) > 25 and len(pt_lower) > 25 and lower_title[:25] == pt_lower[:25]:
+        if len(lower_title) > 40 and len(pt_lower) > 40 and lower_title[:40] == pt_lower[:40]:
             return True
         words1 = set(lower_title.split())
         words2 = set(pt_lower.split())
-        if len(words1) > 3 and len(words2) > 3:
-            if len(words1 & words2) / max(len(words1), len(words2)) > 0.7:
+        if len(words1) > 4 and len(words2) > 4:
+            if len(words1 & words2) / max(len(words1), len(words2)) > 0.85:
                 return True
-    for fb_msg in recent_fb_posts[:30]:
-        if len(lower_title) > 20 and lower_title[:20] in fb_msg:
+    for fb_msg in recent_fb_posts[:20]:
+        if len(lower_title) > 30 and lower_title[:30] in fb_msg:
             return True
     return False
 
